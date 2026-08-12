@@ -104,20 +104,30 @@ jobs:
       - name: Build kernel module
         run: |
           cd android-kernel
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
           if [ ${{ github.event.inputs.android_version }} -le 13 ]; then
             BUILD_CONFIG=common/build.config.gki.${{ github.event.inputs.target_arch }} LTO=thin build/build.sh -j32
-            OUTPUT_PATH="out/android${{ github.event.inputs.android_version }}-${{ github.event.inputs.kernel_version }}/dist"
+            DIST_DIR="out/android${{ github.event.inputs.android_version }}-${{ github.event.inputs.kernel_version }}/dist"
           else
             echo "Using Bazel build system for Android ${{ github.event.inputs.android_version }}"
             tools/bazel run //common:kernel_${{ github.event.inputs.target_arch }}_dist
-            OUTPUT_PATH="out/kernel_${{ github.event.inputs.target_arch }}"
+            DIST_DIR="out/kernel_${{ github.event.inputs.target_arch }}/dist"
           fi
-          echo "OUTPUT_PATH=$OUTPUT_PATH" >> $GITHUB_ENV
-        continue-on-error: true
+          echo "DIST_DIR=$DIST_DIR"
+          if [ -d "$DIST_DIR" ]; then
+            cp -r "$DIST_DIR" "$GITHUB_WORKSPACE/artifacts/dist"
+          else
+            echo "::warning::DIST_DIR not found: $DIST_DIR"
+          fi
+          MODULE="${{ github.event.inputs.driver_name }}"
+          find . -name "$MODULE" -exec cp {} "$GITHUB_WORKSPACE/artifacts/" \; 2>/dev/null || true
+          echo "=== artifacts ==="
+          ls -laR "$GITHUB_WORKSPACE/artifacts/" | head -100
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: kernel-driver-${{ github.event.inputs.target_arch }}
           path: |
-            android-kernel/${{ env.OUTPUT_PATH }}
+            ${{ github.workspace }}/artifacts/**
+          if-no-files-found: error
